@@ -1,0 +1,22 @@
+appId: com.example.aidesktopagent
+productName: AI Desktop Agent
+directories:
+  output: build
+files:
+  - "dist/**/*"
+  - "main.js"
+  - "package.json"
+extraResources:
+  - from: "python"
+    to: "python"
+  - from: "config"
+    to: "config"
+win:
+  target: 
+    - target: portable
+      arch:
+        - x64
+  sign: false  # Disable code signing
+  artifactName: "${productName}-${version}.${ext}"
+mac: null  # Explicitly disable macOS build
+linux: null  # Explicitly disable Linux build

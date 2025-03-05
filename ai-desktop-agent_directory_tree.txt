@@ -1,0 +1,256 @@
+Directory tree for: E:\Agent\ai-desktop-agent
+================================================================================
+└── ai-desktop-agent
+    ├── .babelrc
+    ├── .env
+    ├── .gitignore
+    ├── README.md
+    ├── Tree.py
+    ├── ai-desktop-agent_directory_tree.txt
+    ├── binary_search.py
+    ├── electron-builder.yml
+    ├── forge.config.js
+    ├── hello.txt
+    ├── main.js
+    ├── package-lock.json
+    ├── package.json
+    ├── r1_api_test.py
+    ├── requirements.txt
+    ├── tempCodeRunnerFile.python
+    ├── test-code-service.js
+    ├── test-complex-task.js
+    ├── test-json.js
+    ├── test-task-manager.js
+    ├── test-web-service.js
+    ├── webpack.config.js
+    ├── assets
+    ├── build
+    │   ├── builder-debug.yml
+    │   ├── builder-effective-config.yaml
+    │   └── win-unpacked
+    │       ├── AI Desktop Agent.exe
+    │       ├── LICENSE.electron.txt
+    │       ├── LICENSES.chromium.html
+    │       ├── chrome_100_percent.pak
+    │       ├── chrome_200_percent.pak
+    │       ├── d3dcompiler_47.dll
+    │       ├── ffmpeg.dll
+    │       ├── icudtl.dat
+    │       ├── libEGL.dll
+    │       ├── libGLESv2.dll
+    │       ├── resources.pak
+    │       ├── snapshot_blob.bin
+    │       ├── v8_context_snapshot.bin
+    │       ├── vk_swiftshader.dll
+    │       ├── vk_swiftshader_icd.json
+    │       ├── vulkan-1.dll
+    │       ├── locales
+    │       │   ├── af.pak
+    │       │   ├── am.pak
+    │       │   ├── ar.pak
+    │       │   ├── bg.pak
+    │       │   ├── bn.pak
+    │       │   ├── ca.pak
+    │       │   ├── cs.pak
+    │       │   ├── da.pak
+    │       │   ├── de.pak
+    │       │   ├── el.pak
+    │       │   ├── en-GB.pak
+    │       │   ├── en-US.pak
+    │       │   ├── es-419.pak
+    │       │   ├── es.pak
+    │       │   ├── et.pak
+    │       │   ├── fa.pak
+    │       │   ├── fi.pak
+    │       │   ├── fil.pak
+    │       │   ├── fr.pak
+    │       │   ├── gu.pak
+    │       │   ├── he.pak
+    │       │   ├── hi.pak
+    │       │   ├── hr.pak
+    │       │   ├── hu.pak
+    │       │   ├── id.pak
+    │       │   ├── it.pak
+    │       │   ├── ja.pak
+    │       │   ├── kn.pak
+    │       │   ├── ko.pak
+    │       │   ├── lt.pak
+    │       │   ├── lv.pak
+    │       │   ├── ml.pak
+    │       │   ├── mr.pak
+    │       │   ├── ms.pak
+    │       │   ├── nb.pak
+    │       │   ├── nl.pak
+    │       │   ├── pl.pak
+    │       │   ├── pt-BR.pak
+    │       │   ├── pt-PT.pak
+    │       │   ├── ro.pak
+    │       │   ├── ru.pak
+    │       │   ├── sk.pak
+    │       │   ├── sl.pak
+    │       │   ├── sr.pak
+    │       │   ├── sv.pak
+    │       │   ├── sw.pak
+    │       │   ├── ta.pak
+    │       │   ├── te.pak
+    │       │   ├── th.pak
+    │       │   ├── tr.pak
+    │       │   ├── uk.pak
+    │       │   ├── ur.pak
+    │       │   ├── vi.pak
+    │       │   ├── zh-CN.pak
+    │       │   └── zh-TW.pak
+    │       └── resources
+    │           ├── app.asar
+    │           ├── app.asar.unpacked
+    │           └── python
+    │               ├── agents
+    │               │   └── web_agent.py
+    │               └── utils
+    │                   ├── deepseek_client.py
+    │                   └── test_deepseek.py
+    ├── config
+    ├── dist
+    │   ├── index.html
+    │   ├── renderer.js
+    │   └── renderer.js.LICENSE.txt
+    ├── generated_code
+    │   ├── python_1741102474911.py
+    │   ├── python_1741102474911_modified.py
+    │   ├── python_1741103506542.py
+    │   └── python_1741103506542_modified.py
+    ├── out
+    │   ├── ai-desktop-agent-win32-x64
+    │   │   ├── LICENSE
+    │   │   ├── LICENSES.chromium.html
+    │   │   ├── Squirrel.exe
+    │   │   ├── ai-desktop-agent.exe
+    │   │   ├── chrome_100_percent.pak
+    │   │   ├── chrome_200_percent.pak
+    │   │   ├── d3dcompiler_47.dll
+    │   │   ├── ffmpeg.dll
+    │   │   ├── icudtl.dat
+    │   │   ├── libEGL.dll
+    │   │   ├── libGLESv2.dll
+    │   │   ├── resources.pak
+    │   │   ├── snapshot_blob.bin
+    │   │   ├── v8_context_snapshot.bin
+    │   │   ├── version
+    │   │   ├── vk_swiftshader.dll
+    │   │   ├── vk_swiftshader_icd.json
+    │   │   ├── vulkan-1.dll
+    │   │   ├── locales
+    │   │   │   ├── af.pak
+    │   │   │   ├── am.pak
+    │   │   │   ├── ar.pak
+    │   │   │   ├── bg.pak
+    │   │   │   ├── bn.pak
+    │   │   │   ├── ca.pak
+    │   │   │   ├── cs.pak
+    │   │   │   ├── da.pak
+    │   │   │   ├── de.pak
+    │   │   │   ├── el.pak
+    │   │   │   ├── en-GB.pak
+    │   │   │   ├── en-US.pak
+    │   │   │   ├── es-419.pak
+    │   │   │   ├── es.pak
+    │   │   │   ├── et.pak
+    │   │   │   ├── fa.pak
+    │   │   │   ├── fi.pak
+    │   │   │   ├── fil.pak
+    │   │   │   ├── fr.pak
+    │   │   │   ├── gu.pak
+    │   │   │   ├── he.pak
+    │   │   │   ├── hi.pak
+    │   │   │   ├── hr.pak
+    │   │   │   ├── hu.pak
+    │   │   │   ├── id.pak
+    │   │   │   ├── it.pak
+    │   │   │   ├── ja.pak
+    │   │   │   ├── kn.pak
+    │   │   │   ├── ko.pak
+    │   │   │   ├── lt.pak
+    │   │   │   ├── lv.pak
+    │   │   │   ├── ml.pak
+    │   │   │   ├── mr.pak
+    │   │   │   ├── ms.pak
+    │   │   │   ├── nb.pak
+    │   │   │   ├── nl.pak
+    │   │   │   ├── pl.pak
+    │   │   │   ├── pt-BR.pak
+    │   │   │   ├── pt-PT.pak
+    │   │   │   ├── ro.pak
+    │   │   │   ├── ru.pak
+    │   │   │   ├── sk.pak
+    │   │   │   ├── sl.pak
+    │   │   │   ├── sr.pak
+    │   │   │   ├── sv.pak
+    │   │   │   ├── sw.pak
+    │   │   │   ├── ta.pak
+    │   │   │   ├── te.pak
+    │   │   │   ├── th.pak
+    │   │   │   ├── tr.pak
+    │   │   │   ├── uk.pak
+    │   │   │   ├── ur.pak
+    │   │   │   ├── vi.pak
+    │   │   │   ├── zh-CN.pak
+    │   │   │   └── zh-TW.pak
+    │   │   └── resources
+    │   │       ├── app.asar
+    │   │       └── app.asar.unpacked
+    │   │           └── build
+    │   │               └── win-unpacked
+    │   │                   └── resources
+    │   │                       └── app.asar.unpacked
+    │   └── make
+    │       └── squirrel.windows
+    │           └── x64
+    │               ├── RELEASES
+    │               ├── ai-desktop-agent-1.0.0 Setup.exe
+    │               └── ai_desktop_agent-1.0.0-full.nupkg
+    ├── python
+    │   ├── agents
+    │   │   └── web_agent.py
+    │   ├── models
+    │   └── utils
+    │       ├── deepseek_client.py
+    │       └── test_deepseek.py
+    ├── screenshots
+    │   ├── action_1741094563992.png
+    │   ├── action_1741094597677.png
+    │   ├── action_1741094647108.png
+    │   ├── before_action_1741094553641.png
+    │   ├── before_action_1741094587325.png
+    │   ├── before_action_1741094636748.png
+    │   ├── nav_1741093474093.png
+    │   ├── nav_1741094549527.png
+    │   ├── nav_1741094581905.png
+    │   ├── nav_1741094633375.png
+    │   └── search_results.png
+    └── src
+        ├── core
+        │   └── taskManager.js
+        ├── main
+        ├── models
+        ├── renderer
+        │   ├── index.html
+        │   ├── index.js
+        │   ├── components
+        │   │   ├── App.jsx
+        │   │   ├── TaskPanel.jsx
+        │   │   └── src
+        │   │       └── renderer
+        │   └── styles
+        │       └── global.css
+        ├── services
+        │   ├── aiService.js
+        │   ├── codeService.js
+        │   ├── fileService.js
+        │   ├── guiAutomationService.js
+        │   ├── systemService.js
+        │   ├── visionService.js
+        │   └── webService.js
+        ├── ui
+        └── utils
+            ├── deepseek.js
+            └── test-deepseek.js
