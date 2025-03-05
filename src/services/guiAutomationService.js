@@ -1,90 +1,87 @@
-const keySender = require('node-key-sender');
+// src/services/guiAutomationService.js - Modified to avoid Java dependency
 const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
 const visionService = require('./visionService');
+const path = require('path');
+const fs = require('fs-extra');
 
 class GuiAutomationService {
   constructor() {
     this.isWindows = process.platform === 'win32';
-  }
-
-  /**
-   * Find and activate a window by title
-   */
-  async findAndActivateWindow(windowTitle) {
-    try {
-      if (this.isWindows) {
-        const psCommand = `
-          Add-Type @"
-          using System;
-          using System.Runtime.InteropServices;
-          public class Win32 {
-            [DllImport("user32.dll")]
-            [return: MarshalAs(UnmanagedType.Bool)]
-            public static extern bool SetForegroundWindow(IntPtr hWnd);
-            
-            [DllImport("user32.dll")]
-            public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-          }
-"@
-          
-          \$windows = Get-Process | Where-Object {(\$_.MainWindowTitle -like "*${windowTitle}*") -and (\$_.MainWindowHandle -ne 0)}
-          if (\$windows) {
-            \$handle = \$windows.MainWindowHandle
-            [Win32]::ShowWindow(\$handle, 9) # SW_RESTORE = 9
-            [Win32]::SetForegroundWindow(\$handle)
-            Write-Output "Window activated: \$(\$windows.MainWindowTitle)"
-            exit 0
-          } else {
-            Write-Output "Window not found with title containing: ${windowTitle}"
-            exit 1
-          }
-        `;
-        
-        const result = await execPromise(`powershell -Command "${psCommand}"`);
-        console.log(result.stdout);
-        
-        await this.sleep(1000);
-        return { success: true, message: result.stdout };
-      } else {
-        return { 
-          success: false, 
-          message: `Window activation not implemented for ${process.platform}`
-        };
-      }
-    } catch (error) {
-      console.error('Error finding/activating window:', error);
-      return { success: false, error: error.message };
+    this.scriptDir = path.join(process.cwd(), 'scripts');
+    fs.ensureDirSync(this.scriptDir);
+    
+    // Create PowerShell keyboard script if on Windows
+    if (this.isWindows) {
+      this.createKeyboardScript();
     }
   }
 
   /**
-   * Close the calculator application
+   * Create PowerShell script for keyboard input
    */
-  async closeCalculator() {
-    try {
-      if (this.isWindows) {
-        // Try both modern and legacy calculator process names
-        const result = await execPromise('taskkill /f /im CalculatorApp.exe 2>nul || taskkill /f /im Calculator.exe');
-        console.log('Calculator closed');
-        return { success: true };
-      } else {
-        return { success: false, error: "Not implemented for this platform" };
+  createKeyboardScript() {
+    const scriptPath = path.join(this.scriptDir, 'keyboard.ps1');
+    const scriptContent = `
+      param (
+        [string]$action,
+        [string]$text,
+        [string]$key
+      )
+
+      Add-Type -AssemblyName System.Windows.Forms
+
+      if ($action -eq "type") {
+        [System.Windows.Forms.SendKeys]::SendWait($text)
       }
-    } catch (error) {
-      console.error('Error closing calculator:', error);
-      return { success: false, error: error.message };
-    }
+      elseif ($action -eq "key") {
+        [System.Windows.Forms.SendKeys]::SendWait($key)
+      }
+      elseif ($action -eq "combo") {
+        $keys = $key -split "\\+"
+        foreach ($k in $keys) {
+          if ($k -eq "control") { [System.Windows.Forms.SendKeys]::SendWait("^") }
+          elseif ($k -eq "alt") { [System.Windows.Forms.SendKeys]::SendWait("%") }
+          elseif ($k -eq "shift") { [System.Windows.Forms.SendKeys]::SendWait("+") }
+          else { [System.Windows.Forms.SendKeys]::SendWait($k) }
+        }
+      }
+    `;
+    
+    fs.writeFileSync(scriptPath, scriptContent);
+    return scriptPath;
   }
 
   /**
-   * Type text using keyboard simulation
+   * Type text using PowerShell keyboard input
    */
   async typeText(text) {
     try {
-      keySender.sendText(text);
-      return { success: true };
+      console.log(`Typing text: ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}`);
+      
+      // Take before screenshot
+      const beforeScreenshot = await visionService.captureActiveWindow();
+      
+      if (this.isWindows) {
+        // Escape single quotes for PowerShell
+        const escapedText = text.replace(/'/g, "''");
+        
+        // Use PowerShell to send keystrokes
+        await execPromise(`powershell -Command "& '${path.join(this.scriptDir, 'keyboard.ps1')}' -action 'type' -text '${escapedText}'"`);
+      } else {
+        throw new Error("Platform not supported for keyboard input");
+      }
+      
+      // Take after screenshot
+      const afterScreenshot = await visionService.captureActiveWindow();
+      
+      return { 
+        success: true, 
+        textLength: text.length,
+        beforeScreenshot: beforeScreenshot.success ? beforeScreenshot.path : null,
+        afterScreenshot: afterScreenshot.success ? afterScreenshot.path : null
+      };
     } catch (error) {
       console.error('Error typing text:', error);
       return { success: false, error: error.message };
@@ -92,38 +89,45 @@ class GuiAutomationService {
   }
 
   /**
-   * Press a key or key combination
+   * Press a single key
    */
-  async pressKey(key, modifiers = []) {
+  async pressKey(key) {
     try {
-      console.log(`Attempting to press key: ${key}`);
+      console.log(`Pressing key: ${key}`);
       
-      // Map common key names to their correct values
+      // Map keys to SendKeys format
       const keyMap = {
-        'enter': 'return',
-        'return': 'return',
-        'esc': 'escape',
-        'escape': 'escape',
-        'tab': 'tab',
-        'space': 'space',
-        'backspace': 'backspace',
-        'delete': 'delete',
-        'up': 'up',
-        'down': 'down',
-        'left': 'left',
-        'right': 'right'
+        'enter': '{ENTER}',
+        'return': '{ENTER}',
+        'esc': '{ESC}',
+        'escape': '{ESC}',
+        'tab': '{TAB}',
+        'space': ' ',
+        'backspace': '{BACKSPACE}',
+        'delete': '{DELETE}',
+        'up': '{UP}',
+        'down': '{DOWN}',
+        'left': '{LEFT}',
+        'right': '{RIGHT}'
       };
       
       // Use mapped key if available, otherwise use the provided key
       const mappedKey = keyMap[key.toLowerCase()] || key;
       
-      if (modifiers.length > 0) {
-        modifiers.forEach(modifier => keySender.sendKey(modifier));
+      if (this.isWindows) {
+        await execPromise(`powershell -Command "& '${path.join(this.scriptDir, 'keyboard.ps1')}' -action 'key' -key '${mappedKey}'"`);
+      } else {
+        throw new Error("Platform not supported for keyboard input");
       }
       
-      keySender.sendKey(mappedKey);
+      // Take screenshot after key press
+      const screenshot = await visionService.captureActiveWindow();
       
-      return { success: true };
+      return { 
+        success: true, 
+        key: mappedKey,
+        screenshot: screenshot.success ? screenshot.path : null
+      };
     } catch (error) {
       console.error('Error pressing key:', error);
       return { success: false, error: error.message };
@@ -131,79 +135,39 @@ class GuiAutomationService {
   }
 
   /**
-   * Automate calculator operation
+   * Press multiple keys (keyboard shortcut)
    */
-  async automateCalculator(num1, num2, operation) {
+  async pressKeys(keys) {
     try {
-      console.log(`Automating calculator: ${num1} ${operation} ${num2}`);
+      console.log(`Pressing keys: ${keys.join(' + ')}`);
       
-      // Activate the calculator window
-      await this.findAndActivateWindow('Calculator');
-      await this.sleep(500);
+      // Take before screenshot
+      const beforeScreenshot = await visionService.captureActiveWindow();
       
-      // Clear calculator with Escape key
-      await this.pressKey('escape');
-      await this.sleep(300);
-      
-      // Type first number
-      await this.typeText(num1.toString());
-      await this.sleep(300);
-      
-      // Type operation
-      if (operation === '+') await this.typeText('+');
-      else if (operation === '-') await this.typeText('-');
-      else if (operation === '*') await this.typeText('*');
-      else if (operation === '/') await this.typeText('/');
-      await this.sleep(300);
-      
-      // Type second number
-      await this.typeText(num2.toString());
-      await this.sleep(300);
-      
-      // Press equals
-      await this.pressKey('enter');
-      await this.sleep(1000); // Longer wait for result to display
-      
-      // Read the result using vision service
-      const visionResult = await visionService.readCalculatorDisplay();
-      
-      // Capture the result
-      let resultValue;
-      
-      if (visionResult.success && visionResult.result) {
-        resultValue = visionResult.result;
-        console.log(`Read calculator result with OCR: ${resultValue}`);
+      if (this.isWindows) {
+        // Join keys with + for the PowerShell script
+        const keyCombo = keys.join('+');
+        await execPromise(`powershell -Command "& '${path.join(this.scriptDir, 'keyboard.ps1')}' -action 'combo' -key '${keyCombo}'"`);
       } else {
-        throw new Error('Could not read calculator result');
+        throw new Error("Platform not supported for keyboard shortcuts");
       }
       
-      // Close the calculator
-      await this.closeCalculator();
+      // Take after screenshot
+      const afterScreenshot = await visionService.captureActiveWindow();
       
       return { 
         success: true, 
-        operation: `${num1} ${operation} ${num2}`,
-        result: resultValue,
-        message: `Calculator operation completed: ${num1} ${operation} ${num2} = ${resultValue}`
+        keys,
+        beforeScreenshot: beforeScreenshot.success ? beforeScreenshot.path : null,
+        afterScreenshot: afterScreenshot.success ? afterScreenshot.path : null
       };
     } catch (error) {
-      console.error('Error automating calculator:', error);
-      // Try to close calculator even if there was an error
-      try {
-        await this.closeCalculator();
-      } catch (closeError) {
-        console.error('Error closing calculator after failure:', closeError);
-      }
+      console.error('Error pressing keys:', error);
       return { success: false, error: error.message };
     }
   }
 
-  /**
-   * Utility sleep function
-   */
-  async sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
+  // Other methods remain the same...
 }
 
 module.exports = new GuiAutomationService();

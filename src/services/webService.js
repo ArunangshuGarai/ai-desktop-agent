@@ -70,6 +70,27 @@ class WebService {
     }
   }
 
+  // Enhancement for webNavigationService.js
+async navigateToWebsite(url) {
+  // Launch browser
+  await guiAutomationService.executeCommand(`start chrome ${url}`);
+  
+  // Wait for page to load
+  let loaded = false;
+  let attempts = 0;
+  
+  while (!loaded && attempts < 5) {
+    await this.sleep(2000);
+    const screenshot = await visionService.captureActiveWindow();
+    const analysis = await visionService.analyzeScreenWithAI(`Checking if ${url} is loaded`);
+    
+    loaded = analysis.pageLoaded;
+    attempts++;
+  }
+  
+  return { success: loaded };
+}
+
   /**
    * Interact with a page element
    */

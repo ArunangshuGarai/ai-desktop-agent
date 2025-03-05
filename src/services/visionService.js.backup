@@ -65,66 +65,25 @@ class VisionService {
     }
   }
 
-// Example enhancement for visionService.js
-async analyzeScreenWithAI(task) {
-  // Take a screenshot
-  const screenshot = await this.captureActiveWindow();
-  
-  // Get the text content
-  const textResult = await this.recognizeText(screenshot.path);
-  
-  // Send to DeepSeek API for intelligent analysis
-  const prompt = `
-    Analyze this screenshot and tell me:
-    1. What application is open?
-    2. What UI elements are visible?
-    3. What actions can I take to progress with "${task}"?
-    4. Are there any unexpected elements or dialogs?
-    
-    Screenshot text content:
-    ${textResult.text}
-    
-    Return a detailed JSON with element locations, suggested actions, and confidence levels.
-  `;
-  
-  const analysis = await deepseek.generateJSON(prompt);
-  return analysis;
-}
-
   /**
    * Recognize text in a screenshot using OCR
    */
-  // Update the recognizeText method in src/services/visionService.js
-async recognizeText(imagePath) {
-  try {
+  async recognizeText(imagePath) {
     await this.initOCR();
     
-    // Add file existence check
-    if (!fs.existsSync(imagePath)) {
-      console.error(`File does not exist: ${imagePath}`);
-      return { 
-        success: false, 
-        error: `File not found: ${imagePath}`,
-        text: "" // Provide empty text to avoid undefined errors
+    try {
+      const result = await this.ocrWorker.recognize(imagePath);
+      
+      return {
+        success: true,
+        text: result.data.text,
+        confidence: result.data.confidence
       };
+    } catch (error) {
+      console.error('Error recognizing text:', error);
+      return { success: false, error: error.message };
     }
-    
-    const result = await this.ocrWorker.recognize(imagePath);
-    
-    return {
-      success: true,
-      text: result.data.text,
-      confidence: result.data.confidence
-    };
-  } catch (error) {
-    console.error('Error recognizing text:', error);
-    return { 
-      success: false, 
-      error: error.message,
-      text: "" // Provide empty text to avoid undefined errors 
-    };
   }
-}
 
   /**
    * Analyze screen content using DeepSeek AI

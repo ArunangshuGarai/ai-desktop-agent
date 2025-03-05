@@ -1,7 +1,8 @@
+// main.js - Updated with vision-based task manager
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const isDev = require('electron-is-dev');
-const taskManager = require('./src/core/taskManager');
+const visionTaskManager = require('./src/core/visionTaskManager'); // Updated import
 require('dotenv').config();
 
 let mainWindow;
@@ -38,7 +39,7 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   }
   
-  // Set up event forwarding from TaskManager to renderer
+  // Set up event forwarding from VisionTaskManager to renderer
   setupTaskManagerEvents();
 }
 
@@ -56,16 +57,16 @@ app.on('activate', () => {
   }
 });
 
-// Forward events from TaskManager to renderer
-// Update the events array in setupTaskManagerEvents
+// Forward events from VisionTaskManager to renderer
 function setupTaskManagerEvents() {
   const events = [
     'analyzing', 'analyzed', 'step-started', 'step-completed',
-    'step-error', 'completed', 'error', 'calculation-result', 'task-summary'
+    'step-error', 'completed', 'error', 'calculation-result', 'task-summary',
+    'screenshot-taken', 'vision-analysis', 'element-found', 'element-not-found'
   ];
   
   events.forEach(event => {
-    taskManager.on(event, (data) => {
+    visionTaskManager.on(event, (data) => {
       if (mainWindow) {
         mainWindow.webContents.send(`task-${event}`, data);
       }
@@ -76,7 +77,7 @@ function setupTaskManagerEvents() {
 // IPC handlers - ensure all return valid JSON
 ipcMain.handle('analyze-task', async (event, { task }) => {
   try {
-    return await taskManager.analyzeTask(task);
+    return await visionTaskManager.analyzeTask(task);
   } catch (error) {
     return { error: error.message };
   }
@@ -84,7 +85,7 @@ ipcMain.handle('analyze-task', async (event, { task }) => {
 
 ipcMain.handle('execute-next-step', async () => {
   try {
-    return await taskManager.executeNextStep();
+    return await visionTaskManager.executeNextStep();
   } catch (error) {
     return { error: error.message };
   }
@@ -92,15 +93,41 @@ ipcMain.handle('execute-next-step', async () => {
 
 ipcMain.handle('execute-full-task', async (event, { task }) => {
   try {
-    await taskManager.analyzeTask(task);
-    return await taskManager.executeFullTask();
+    await visionTaskManager.analyzeTask(task);
+    return await visionTaskManager.executeFullTask();
   } catch (error) {
     return { error: error.message };
   }
 });
 
 ipcMain.handle('get-task-state', () => {
-  return taskManager.getTaskState();
+  return visionTaskManager.getTaskState();
+});
+
+// New vision-specific IPC handlers
+ipcMain.handle('take-screenshot', async () => {
+  const visionService = require('./src/services/visionService');
+  try {
+    return await visionService.captureActiveWindow();
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('analyze-screenshot', async (event, { screenshot, task }) => {
+  const deepseek = require('./src/utils/deepseek');
+  const visionService = require('./src/services/visionService');
+  
+  try {
+    const textResult = await visionService.recognizeText(screenshot);
+    if (!textResult.success) {
+      return { error: 'Text recognition failed' };
+    }
+    
+    return await deepseek.analyzeScreenshot(textResult.text, task);
+  } catch (error) {
+    return { error: error.message };
+  }
 });
 
 // Add keyboard shortcut to toggle DevTools only in dev mode

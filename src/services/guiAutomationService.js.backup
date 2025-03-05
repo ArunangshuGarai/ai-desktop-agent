@@ -1,0 +1,182 @@
+// src/services/guiAutomationService.js - Enhanced with vision-based interactions
+const keySender = require('node-key-sender');
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
+const visionService = require('./visionService');
+
+class GuiAutomationService {
+  constructor() {
+    this.isWindows = process.platform === 'win32';
+    this.keyboardDelay = 100; // ms between key presses
+  }
+
+  /**
+   * Type text using keyboard simulation with vision verification
+   */
+  async typeText(text) {
+    try {
+      console.log(`Typing text: ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}`);
+      
+      // Take before screenshot
+      const beforeScreenshot = await visionService.captureActiveWindow();
+      
+      // For large text, type in chunks to avoid overwhelming the system
+      const chunkSize = 500;
+      if (text.length > chunkSize) {
+        for (let i = 0; i < text.length; i += chunkSize) {
+          const chunk = text.substring(i, Math.min(i + chunkSize, text.length));
+          keySender.sendText(chunk);
+          await this.sleep(500); // Pause between chunks
+        }
+      } else {
+        keySender.sendText(text);
+      }
+      
+      // Take after screenshot
+      const afterScreenshot = await visionService.captureActiveWindow();
+      
+      return { 
+        success: true, 
+        textLength: text.length,
+        beforeScreenshot: beforeScreenshot.success ? beforeScreenshot.path : null,
+        afterScreenshot: afterScreenshot.success ? afterScreenshot.path : null
+      };
+    } catch (error) {
+      console.error('Error typing text:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Press a single key
+   */
+  async pressKey(key) {
+    try {
+      console.log(`Pressing key: ${key}`);
+      
+      // Map common key names to their correct values
+      const keyMap = {
+        'enter': 'return',
+        'return': 'return',
+        'esc': 'escape',
+        'escape': 'escape',
+        'tab': 'tab',
+        'space': 'space',
+        'backspace': 'backspace',
+        'delete': 'delete',
+        'up': 'up',
+        'down': 'down',
+        'left': 'left',
+        'right': 'right'
+      };
+      
+      // Use mapped key if available, otherwise use the provided key
+      const mappedKey = keyMap[key.toLowerCase()] || key;
+      
+      keySender.sendKey(mappedKey);
+      
+      // Take screenshot after key press
+      const screenshot = await visionService.captureActiveWindow();
+      
+      return { 
+        success: true, 
+        key: mappedKey,
+        screenshot: screenshot.success ? screenshot.path : null
+      };
+    } catch (error) {
+      console.error('Error pressing key:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Press multiple keys (keyboard shortcut)
+   */
+  async pressKeys(keys) {
+    try {
+      console.log(`Pressing keys: ${keys.join(' + ')}`);
+      
+      // Take before screenshot
+      const beforeScreenshot = await visionService.captureActiveWindow();
+      
+      // For each key in the array, send it
+      for (const key of keys) {
+        keySender.sendKey(key);
+        await this.sleep(this.keyboardDelay);
+      }
+      
+      // Take after screenshot
+      const afterScreenshot = await visionService.captureActiveWindow();
+      
+      return { 
+        success: true, 
+        keys,
+        beforeScreenshot: beforeScreenshot.success ? beforeScreenshot.path : null,
+        afterScreenshot: afterScreenshot.success ? afterScreenshot.path : null
+      };
+    } catch (error) {
+      console.error('Error pressing keys:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Find and activate a window by title
+   */
+  async findAndActivateWindow(windowTitle) {
+    try {
+      if (this.isWindows) {
+        const psCommand = `
+          Add-Type @"
+          using System;
+          using System.Runtime.InteropServices;
+          public class Win32 {
+            [DllImport("user32.dll")]
+            [return: MarshalAs(UnmanagedType.Bool)]
+            public static extern bool SetForegroundWindow(IntPtr hWnd);
+            
+            [DllImport("user32.dll")]
+            public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+          }
+"@
+          
+          \$windows = Get-Process | Where-Object {(\$_.MainWindowTitle -like "*${windowTitle}*") -and (\$_.MainWindowHandle -ne 0)}
+          if (\$windows) {
+            \$handle = \$windows.MainWindowHandle
+            [Win32]::ShowWindow(\$handle, 9) # SW_RESTORE = 9
+            [Win32]::SetForegroundWindow(\$handle)
+            Write-Output "Window activated: \$(\$windows.MainWindowTitle)"
+            exit 0
+          } else {
+            Write-Output "Window not found with title containing: ${windowTitle}"
+            exit 1
+          }
+        `;
+        
+        const result = await execPromise(`powershell -Command "${psCommand}"`);
+        console.log(result.stdout);
+        
+        await this.sleep(1000);
+        return { success: true, message: result.stdout };
+      } else {
+        return { 
+          success: false, 
+          message: `Window activation not implemented for ${process.platform}`
+        };
+      }
+    } catch (error) {
+      console.error('Error finding/activating window:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Utility sleep function
+   */
+  async sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+
+module.exports = new GuiAutomationService();
