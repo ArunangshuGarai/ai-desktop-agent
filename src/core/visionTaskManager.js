@@ -1,679 +1,325 @@
 // src/core/visionTaskManager.js
 const EventEmitter = require('events');
-const deepseek = require('../utils/deepseek');
-const visionService = require('../services/visionService');
-const guiAutomationService = require('../services/guiAutomationService');
 const path = require('path');
-const fs = require('fs-extra');
+const fs = require('fs');
+const DeepseekClient = require('../utils/deepseek');
+const VisionService = require('../services/visionService');
+const SystemService = require('../services/systemService');
 
+// Get API key from environment
+const apiKey = process.env.API_KEY || '';
+const apiEndpoint = process.env.API_ENDPOINT || 'https://api.deepseek.com/v1/chat/completions';
+
+/**
+ * VisionTaskManager handles the analysis and execution of vision-based tasks
+ * Implements EventEmitter for event-based communication
+ */
 class VisionTaskManager extends EventEmitter {
   constructor() {
-    super();
+    super(); // Initialize EventEmitter
+    
+    // Get API key and configuration from environment
+    const apiKey = process.env.API_KEY || '';
+    const apiEndpoint = process.env.API_ENDPOINT || 'https://openrouter.ai/api/v1/chat/completions';
+    const apiModel = process.env.API_MODEL || 'deepseek/deepseek-r1:free';
+    
+    console.log(`API configuration: Endpoint=${apiEndpoint}, Model=${apiModel}`);
+    console.log(`API Key present: ${apiKey ? 'Yes' : 'No'}`);
+    
+    // Initialize services
+    this.visionService = new VisionService();
+    this.systemService = new SystemService();
+    this.apiClient = new DeepseekClient(apiKey, apiEndpoint, apiModel);
+    
+    // Task state
     this.currentTask = null;
-    this.steps = [];
+    this.taskSteps = [];
     this.currentStepIndex = -1;
-    this.context = {};
-    this.screenshotsDir = path.join(process.cwd(), 'screenshots');
-    fs.ensureDirSync(this.screenshotsDir);
+    this.taskState = 'idle';
+    
+    // Ensure screenshot folder exists
+    this.screenshotFolder = path.join(process.cwd(), process.env.SCREENSHOT_DIR || 'screenshots');
+    this.ensureScreenshotFolder();
+    
+    console.log('VisionTaskManager initialized with event emitter functionality');
   }
 
   /**
-   * Analyze a task and break it down into vision-based steps
+   * Ensure the screenshot directory exists
    */
-  async analyzeTask(taskDescription) {
+  ensureScreenshotFolder() {
+    if (!fs.existsSync(this.screenshotFolder)) {
+      fs.mkdirSync(this.screenshotFolder, { recursive: true });
+    }
+  }
+
+  /**
+   * Analyze a task and break it down into steps
+   * @param {string} task - The task description to analyze
+   * @returns {Object} - The analysis result
+   */
+  async analyzeTask(task) {
     try {
-      this.emit('analyzing', { task: taskDescription });
+      this.taskState = 'analyzing';
+      this.emit('analyzing', { task });
       
-      // For VS Code binary search task, use predefined steps
-      if ((taskDescription.toLowerCase().includes('vscode') || 
-           taskDescription.toLowerCase().includes('vs code')) && 
-          taskDescription.toLowerCase().includes('binary search')) {
-        return this.createVsCodeBinarySearchPlan(taskDescription);
+      console.log(`Analyzing task: ${task}`);
+      
+      // Reset task state
+      this.currentTask = task;
+      this.taskSteps = [];
+      this.currentStepIndex = -1;
+      
+      // Generate analysis using Deepseek API
+      const result = await this.apiClient.generateJSON(task);
+      
+      if (!result) {
+        throw new Error('Failed to analyze task: Empty response');
       }
       
-      // For any VS Code task
-      if (taskDescription.toLowerCase().includes('vscode') || 
-          taskDescription.toLowerCase().includes('vs code')) {
-        return this.createVsCodeBinarySearchPlan(taskDescription);
+      // Store the task steps for execution
+      if (result.steps && Array.isArray(result.steps)) {
+        this.taskSteps = result.steps;
+        console.log(`Task analyzed with ${this.taskSteps.length} steps`);
+      } else {
+        console.log('Task analyzed but no steps were defined');
+        this.taskSteps = [];
       }
       
-      // For simple notepad tasks
-      if (taskDescription.toLowerCase().includes('notepad')) {
-        return this.createNotepadPlan(taskDescription);
-      }
+      this.taskState = 'analyzed';
       
-      // Use DeepSeek API for general tasks
-      const prompt = `
-        I need to break down this desktop automation task into vision-based steps:
-        "${taskDescription}"
-        
-        Provide a clear plan with:
-        1. Brief analysis of what the task involves
-        2. Detailed step-by-step instructions 
-        3. For each step, include what to look for visually and what actions to take
-        
-        Return as JSON with no markdown.
-      `;
+      // IMPORTANT: Comment out or remove this line to prevent duplicate events
+      // The main.js IPC handlers will handle sending the task-analyzed event
+      // this.emit('analyzed', { analysis: result.analysis, steps: this.taskSteps });
       
-      try {
-        const taskPlan = await deepseek.generateJSON(prompt);
-        
-        this.currentTask = taskDescription;
-        this.steps = taskPlan.steps || [];
-        this.currentStepIndex = -1;
-        this.context = {
-          taskDescription,
-          analysis: taskPlan.analysis || "Task analysis"
-        };
-        
-        this.emit('analyzed', { 
-          task: taskDescription,
-          analysis: taskPlan.analysis || "Task analyzed",
-          steps: this.steps
-        });
-        
-        return taskPlan;
-      } catch (error) {
-        console.error('Error getting task plan:', error);
-        return this.createFallbackPlan(taskDescription);
-      }
+      return result;
     } catch (error) {
-      console.error('Error in analyzeTask:', error);
+      this.taskState = 'error';
       this.emit('error', { error: error.message });
       throw error;
     }
   }
 
   /**
-   * Create a plan for VS Code binary search task
-   */
-  createVsCodeBinarySearchPlan(taskDescription) {
-    const plan = {
-      analysis: "This task involves opening VS Code, creating a Python file for binary search, writing code, and executing it.",
-      steps: [
-        {
-          id: 1,
-          name: "Open VS Code",
-          description: "Launch VS Code application",
-          type: "system",
-          actions: [
-            {
-              type: "system",  // Explicitly set type
-              action: "executeCommand",
-              params: { command: "code" }
-            }
-          ]
-        },
-        {
-          id: 2,
-          name: "Create New File",
-          description: "Create a new file using keyboard shortcut",
-          type: "input",
-          actions: [
-            {
-              type: "input",  // Explicitly set type
-              action: "pressKeys",
-              params: { keys: ["control", "n"] }
-            }
-          ]
-        },
-        {
-          id: 3,
-          name: "Save File As",
-          description: "Save the file as binary_search.py",
-          type: "input",
-          actions: [
-            {
-              type: "input",  // Explicitly set type
-              action: "pressKeys",
-              params: { keys: ["control", "s"] }
-            },
-            {
-              type: "input",  // Explicitly set type
-              action: "typeText",
-              params: { text: "binary_search.py" }
-            },
-            {
-              type: "input",  // Explicitly set type
-              action: "pressKey",
-              params: { key: "enter" }
-            }
-          ]
-        },
-        {
-          id: 4,
-          name: "Write Binary Search Code",
-          description: "Write Python code implementing binary search with test case",
-          type: "input",
-          actions: [
-            {
-              type: "api",  // Explicitly set type
-              action: "generatePythonCode",
-              params: { task: "Implement binary search algorithm in Python with a test case searching for number 4 in a sorted array [1,2,3,4,5,6,7,8,9,10]" }
-            },
-            {
-              type: "input",  // Explicitly set type
-              action: "typeText",
-              params: { text: "{{generatedCode}}" }
-            }
-          ]
-        },
-        {
-          id: 5,
-          name: "Save and Run Code",
-          description: "Save the file and run it in terminal",
-          type: "input",
-          actions: [
-            {
-              type: "input",  // Explicitly set type
-              action: "pressKeys",
-              params: { keys: ["control", "s"] }
-            },
-            {
-              type: "input",  // Explicitly set type
-              action: "pressKeys",
-              params: { keys: ["control", "`"] }
-            },
-            {
-              type: "input",  // Explicitly set type
-              action: "typeText",
-              params: { text: "python binary_search.py\n" }
-            }
-          ]
-        }
-      ]
-    };
-    
-    // Same as before...
-    this.currentTask = taskDescription;
-    this.steps = plan.steps;
-    this.currentStepIndex = -1;
-    this.context = {
-      taskDescription,
-      analysis: plan.analysis
-    };
-    
-    this.emit('analyzed', { 
-      task: taskDescription,
-      analysis: plan.analysis,
-      steps: plan.steps
-    });
-    
-    return plan;
-  }
-
-  /**
-   * Create a plan for notepad task
-   */
-  createNotepadPlan(taskDescription) {
-    // Extract text to type from task description
-    const textMatch = taskDescription.match(/type ['"](.+?)['"]/i) || 
-                     taskDescription.match(/type (.+?)( and | then |$)/i);
-    const textToType = textMatch ? textMatch[1] : "Hello from Vision-Based Agent";
-    
-    const plan = {
-      analysis: `This task involves opening Notepad and typing text: "${textToType}"`,
-      steps: [
-        {
-          id: 1,
-          name: "Open Notepad",
-          description: "Launch Notepad application",
-          type: "system",
-          actions: [
-            {
-              type: "system",
-              action: "executeCommand",
-              params: { command: "notepad" }
-            }
-          ]
-        },
-        {
-          id: 2,
-          name: "Type Text",
-          description: `Type the text: "${textToType}"`,
-          type: "input",
-          actions: [
-            {
-              type: "input",
-              action: "typeText",
-              params: { text: textToType }
-            }
-          ]
-        }
-      ]
-    };
-    
-    // Add save file step if mentioned in task
-    if (taskDescription.toLowerCase().includes("save")) {
-      const filenameMatch = taskDescription.match(/save as ['"](.+?)['"]/i) || 
-                           taskDescription.match(/save as (.+?)( and | then |$)/i);
-      const filename = filenameMatch ? filenameMatch[1] : "note.txt";
-      
-      plan.steps.push({
-        id: 3,
-        name: "Save File",
-        description: `Save file as "${filename}"`,
-        type: "input",
-        actions: [
-          {
-            type: "input",
-            action: "pressKeys",
-            params: { keys: ["control", "s"] }
-          },
-          {
-            type: "input",
-            action: "typeText",
-            params: { text: filename }
-          },
-          {
-            type: "input",
-            action: "pressKey",
-            params: { key: "enter" }
-          }
-        ]
-      });
-    }
-    
-    this.currentTask = taskDescription;
-    this.steps = plan.steps;
-    this.currentStepIndex = -1;
-    this.context = {
-      taskDescription,
-      analysis: plan.analysis
-    };
-    
-    this.emit('analyzed', { 
-      task: taskDescription,
-      analysis: plan.analysis,
-      steps: plan.steps
-    });
-    
-    return plan;
-  }
-
-  /**
-   * Create a fallback plan for when API fails
-   */
-  createFallbackPlan(taskDescription) {
-    const plan = {
-      analysis: `Executing task: "${taskDescription}"`,
-      steps: [
-        {
-          id: 1,
-          name: "Take Initial Screenshot",
-          description: "Capture current screen state",
-          type: "vision",
-          actions: [
-            {
-              type: "vision",
-              action: "captureActiveWindow",
-              params: {}
-            }
-          ]
-        },
-        {
-          id: 2,
-          name: "Execute Command",
-          description: `Execute the command from task description`,
-          type: "system",
-          actions: [
-            {
-              type: "system",
-              action: "executeCommand",
-              params: { command: this.extractCommand(taskDescription) }
-            }
-          ]
-        }
-      ]
-    };
-    
-    this.currentTask = taskDescription;
-    this.steps = plan.steps;
-    this.currentStepIndex = -1;
-    this.context = {
-      taskDescription,
-      analysis: plan.analysis
-    };
-    
-    this.emit('analyzed', { 
-      task: taskDescription,
-      analysis: plan.analysis,
-      steps: plan.steps
-    });
-    
-    return plan;
-  }
-
-  /**
-   * Extract a command from task description
-   */
-  extractCommand(taskDescription) {
-    if (taskDescription.toLowerCase().includes("open vscode") || 
-        taskDescription.toLowerCase().includes("open vs code")) {
-      return "code";
-    }
-    
-    if (taskDescription.toLowerCase().includes("open notepad")) {
-      return "notepad";
-    }
-    
-    // Default to explorer
-    return "explorer";
-  }
-
-  /**
-   * Execute the next step in the task
+   * Execute the next step in the current task
+   * @returns {Object} - Result of the step execution
    */
   async executeNextStep() {
-    if (!this.steps || this.steps.length === 0) {
-      throw new Error('No task has been analyzed yet');
-    }
-    
-    if (this.currentStepIndex >= this.steps.length - 1) {
-      this.emit('completed', { task: this.currentTask });
-      return { completed: true };
-    }
-    
-    this.currentStepIndex++;
-    const step = this.steps[this.currentStepIndex];
-    
-    this.emit('step-started', { 
-      step, 
-      index: this.currentStepIndex,
-      total: this.steps.length
-    });
-    
     try {
-      // Execute each action in the step
-      const results = [];
-      
-      const actions = step.actions || [];
-      if (actions.length === 0) {
-        console.warn(`No actions defined for step: ${step.name}`);
+      if (this.taskSteps.length === 0) {
+        throw new Error('No steps to execute');
       }
       
-      for (const action of actions) {
-        // Replace template variables with context values
-        this.resolveActionParams(action);
-        
-        // Add default type if missing
-        if (!action.type) {
-          // Try to infer type from action
-          if (action.action === 'executeCommand') {
-            action.type = 'system';
-          } else if (action.action === 'typeText' || action.action === 'pressKey' || action.action === 'pressKeys') {
-            action.type = 'input';
-          } else if (action.action === 'captureActiveWindow' || action.action === 'analyzeScreenContent') {
-            action.type = 'vision';
-          } else if (action.action === 'generatePythonCode') {
-            action.type = 'api';
-          } else {
-            console.warn(`Unknown action: ${action.action}, defaulting to system type`);
-            action.type = 'system';
-          }
-        }
-        
-        let result;
-        
-        // Execute action based on type
-        switch (action.type) {
-          case 'vision':
-            result = await this.executeVisionAction(action);
-            break;
-          case 'system':
-            result = await this.executeSystemAction(action);
-            break;
-          case 'input':
-            result = await this.executeInputAction(action);
-            break;
-          case 'api':
-            result = await this.executeApiAction(action);
-            break;
-          default:
-            console.warn(`Unknown action type: ${action.type}`);
-            continue;
-        }
-        
-        // Store result in context
-        const resultKey = `${action.type}_${action.action}_result`;
-        this.context[resultKey] = result;
-        
-        results.push(result);
+      if (this.currentStepIndex >= this.taskSteps.length - 1) {
+        throw new Error('All steps already executed');
       }
       
-      // Take screenshot after step completion
-      const screenshotPath = path.join(
-        this.screenshotsDir, 
-        `step_${this.currentStepIndex + 1}_${Date.now()}.png`
-      );
+      this.currentStepIndex++;
+      const step = this.taskSteps[this.currentStepIndex];
       
-      const screenshot = await visionService.captureActiveWindow(screenshotPath);
-      if (screenshot.success) {
-        this.emit('screenshot-taken', { path: screenshot.path, step: this.currentStepIndex + 1 });
-      }
+      this.taskState = 'executing';
+      this.emit('step-started', { 
+        step, 
+        index: this.currentStepIndex,
+        total: this.taskSteps.length 
+      });
+      
+      console.log(`Executing step ${this.currentStepIndex + 1}/${this.taskSteps.length}: ${step.description || 'No description'}`);
+      
+      // Execute the step based on its action type
+      const result = await this.executeStep(step);
       
       this.emit('step-completed', { 
-        step,
+        step, 
+        result,
         index: this.currentStepIndex,
-        results
+        total: this.taskSteps.length 
       });
       
-      return { 
-        completed: false,
-        step,
-        results
-      };
+      // If this was the last step, mark task as completed
+      if (this.currentStepIndex === this.taskSteps.length - 1) {
+        this.taskState = 'completed';
+        this.emit('completed', { 
+          task: this.currentTask,
+          stepsCompleted: this.currentStepIndex + 1 
+        });
+      }
+      
+      return { success: true, step, result };
     } catch (error) {
-      console.error(`Error executing step ${this.currentStepIndex + 1}:`, error);
       this.emit('step-error', { 
-        step,
-        index: this.currentStepIndex,
-        error: error.message
+        error: error.message,
+        index: this.currentStepIndex 
       });
+      
       throw error;
     }
   }
 
   /**
-   * Resolve template parameters in action params
-   */
-  resolveActionParams(action) {
-    if (!action.params) return;
-    
-    Object.keys(action.params).forEach(key => {
-      const value = action.params[key];
-      if (typeof value === 'string' && value.includes('{{') && value.includes('}}')) {
-        const matches = value.match(/\{\{(.+?)\}\}/g);
-        
-        if (matches) {
-          let resolvedValue = value;
-          
-          matches.forEach(match => {
-            const varName = match.replace(/\{\{|\}\}/g, '').trim();
-            if (this.context[varName] !== undefined) {
-              resolvedValue = resolvedValue.replace(match, this.context[varName]);
-            }
-          });
-          
-          action.params[key] = resolvedValue;
-        }
-      }
-    });
-  }
-
-  /**
-   * Execute a vision-related action
-   */
-  async executeVisionAction(action) {
-    switch (action.action) {
-      case 'captureActiveWindow':
-        return await visionService.captureActiveWindow();
-        
-      case 'analyzeScreenContent':
-        return await visionService.analyzeScreenContent(action.params.elementsToLookFor || []);
-        
-      case 'waitForVisualElement':
-        return await visionService.waitForVisualElement(
-          action.params.visualCues || [], 
-          action.params.timeout || 10000
-        );
-        
-      case 'recognizeTextInRegion':
-        return await visionService.recognizeTextInRegion(
-          action.params.regionName || 'screen',
-          action.params.expectedText || ''
-        );
-        
-      default:
-        throw new Error(`Unsupported vision action: ${action.action}`);
-    }
-  }
-
-  /**
-   * Execute a system-related action
-   */
-  async executeSystemAction(action) {
-    switch (action.action) {
-      case 'executeCommand':
-        return await guiAutomationService.executeCommand(action.params.command || '');
-        
-      default:
-        throw new Error(`Unsupported system action: ${action.action}`);
-    }
-  }
-
-  /**
-   * Execute an input-related action
-   */
-  async executeInputAction(action) {
-    switch (action.action) {
-      case 'typeText':
-        return await guiAutomationService.typeText(action.params.text || '');
-        
-      case 'pressKey':
-        return await guiAutomationService.pressKey(action.params.key || '');
-        
-      case 'pressKeys':
-        return await guiAutomationService.pressKeys(action.params.keys || []);
-        
-      default:
-        throw new Error(`Unsupported input action: ${action.action}`);
-    }
-  }
-
-  // Enhancement for visionTaskManager.js
-// Enhancement for visionTaskManager.js
-async requestUserGuidance(state, task) {
-  console.log("I'm not sure how to proceed. There are multiple possibilities:");
-  
-  state.possibleActions.forEach((action, index) => {
-    console.log(`${index + 1}. ${action.description} (confidence: ${action.confidence})`);
-  });
-  
-  console.log("Which action would you like me to take? (Enter the number)");
-  
-  // In a real application, you'd implement actual user input here
-  // For now, simulate with a timeout and default choice
-  return new Promise(resolve => {
-    setTimeout(() => {
-      // Default to first option if no input
-      resolve(state.possibleActions[0]);
-    }, 10000);
-  });
-}
-
-  // Enhancement for visionTaskManager.js
-async executeAdaptiveTask(task) {
-  let completed = false;
-  let attempts = 0;
-  let lastScreenshot = null;
-  
-  while (!completed && attempts < 10) {
-    // Take screenshot and analyze current state
-    const screenshot = await visionService.captureActiveWindow();
-    const currentState = await visionService.analyzeScreenWithAI(task);
-    
-    // Check if we're making progress
-    const isNewState = this.isDifferentState(screenshot, lastScreenshot);
-    lastScreenshot = screenshot;
-    
-    if (!isNewState && attempts > 3) {
-      // We're stuck, ask user for guidance
-      const guidance = await this.requestUserGuidance(currentState, task);
-      await this.executeActionFromGuidance(guidance);
-    } else {
-      // Execute next recommended action
-      const nextAction = currentState.recommendedAction;
-      await this.executeAction(nextAction);
-    }
-    
-    // Check if task is complete
-    completed = currentState.taskCompleted;
-    attempts++;
-  }
-}
-
-  /**
-   * Execute an API-related action
-   */
-  async executeApiAction(action) {
-    switch (action.action) {
-      case 'generatePythonCode':
-        const code = await deepseek.generatePythonCode(action.params.task || '');
-        this.context.generatedCode = code; // Store for template substitution
-        return { success: true, code };
-        
-      default:
-        throw new Error(`Unsupported API action: ${action.action}`);
-    }
-  }
-
-  /**
-   * Execute all steps in the current task
+   * Execute a full task from start to finish
+   * @returns {Object} - Result of the full task execution
    */
   async executeFullTask() {
-    let result;
-    do {
-      result = await this.executeNextStep();
-    } while (!result.completed);
-    
-    const taskSummary = this.createTaskSummary();
-    this.emit('task-summary', taskSummary);
-    
-    return {
-      success: true,
-      task: this.currentTask,
-      summary: taskSummary
-    };
+    try {
+      if (!this.currentTask || this.taskSteps.length === 0) {
+        throw new Error('No task has been analyzed');
+      }
+      
+      const results = [];
+      
+      // Reset to start from the beginning
+      this.currentStepIndex = -1;
+      
+      // Execute all steps sequentially
+      while (this.currentStepIndex < this.taskSteps.length - 1) {
+        const stepResult = await this.executeNextStep();
+        results.push(stepResult);
+      }
+      
+      const summary = {
+        task: this.currentTask,
+        stepsCompleted: this.currentStepIndex + 1,
+        totalSteps: this.taskSteps.length,
+        success: true
+      };
+      
+      this.emit('task-summary', summary);
+      
+      return summary;
+    } catch (error) {
+      const errorSummary = {
+        task: this.currentTask,
+        stepsCompleted: this.currentStepIndex + 1,
+        totalSteps: this.taskSteps.length,
+        success: false,
+        error: error.message
+      };
+      
+      this.emit('task-summary', errorSummary);
+      
+      throw error;
+    }
   }
 
   /**
-   * Create a summary of the completed task
+   * Execute a single step
+   * @param {Object} step - The step to execute
+   * @returns {Object} - Result of the step execution
    */
-  createTaskSummary() {
-    return {
-      task: this.currentTask,
-      stepsCompleted: this.currentStepIndex + 1,
-      totalSteps: this.steps.length,
-      successful: this.currentStepIndex >= this.steps.length - 1,
-      message: `Task "${this.currentTask}" completed successfully.`,
-      screenshots: Object.keys(this.context)
-        .filter(key => key.includes('screenshot') && this.context[key] && this.context[key].path)
-        .map(key => this.context[key].path)
-    };
+  async executeStep(step) {
+    if (!step || !step.action) {
+      console.warn("Cannot execute undefined action");
+      return { success: false, message: 'Undefined action' };
+    }
+    
+    switch (step.action.toLowerCase()) {
+      case 'click':
+        if (step.target) {
+          console.log(`Clicking on: ${JSON.stringify(step.target)}`);
+          // Implement actual click logic here using your robotjs or other mechanism
+          // For example: await this.systemService.mouseClick(step.target.x, step.target.y);
+          return { success: true, action: 'click', target: step.target };
+        } else {
+          console.warn("Click action missing target coordinates");
+          return { success: false, message: 'Missing target coordinates' };
+        }
+        
+      case 'type':
+        if (step.text) {
+          console.log(`Typing text: ${step.text}`);
+          // Implement actual typing logic here
+          // For example: await this.systemService.typeText(step.text);
+          return { success: true, action: 'type', text: step.text };
+        } else {
+          console.warn("Type action missing text content");
+          return { success: false, message: 'Missing text content' };
+        }
+        
+      case 'screenshot':
+        const screenshotName = step.name || `action_screenshot_${Date.now()}`;
+        const screenshotPath = await this.takeScreenshot(screenshotName);
+        this.emit('screenshot-taken', { path: screenshotPath });
+        return { 
+          success: true, 
+          action: 'screenshot', 
+          path: screenshotPath 
+        };
+        
+      case 'wait':
+        const waitTime = step.time || 1000; // Default to 1 second
+        console.log(`Waiting for ${waitTime}ms`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        return { success: true, action: 'wait', time: waitTime };
+        
+      case 'scroll':
+        const direction = step.direction || 'down';
+        const amount = step.amount || 300;
+        console.log(`Scrolling ${direction} by ${amount} pixels`);
+        // Implement scrolling logic here
+        // For example: await this.systemService.scroll(direction, amount);
+        return { 
+          success: true, 
+          action: 'scroll', 
+          direction,
+          amount 
+        };
+        
+      case 'press':
+        if (step.key) {
+          console.log(`Pressing key: ${step.key}`);
+          // Implement key press logic here
+          // For example: await this.systemService.pressKey(step.key);
+          return { success: true, action: 'press', key: step.key };
+        } else {
+          console.warn("Press action missing key specification");
+          return { success: false, message: 'Missing key specification' };
+        }
+        
+      default:
+        console.log(`Unknown action: ${step.action}`);
+        return { 
+          success: false, 
+          action: step.action,
+          message: 'Unknown action type' 
+        };
+    }
   }
 
   /**
-   * Get the current state of the task
+   * Take a screenshot and save it to the screenshots folder
+   * @param {string} name - Base name for the screenshot file
+   * @returns {string|null} - Path to the saved screenshot or null if failed
+   */
+  async takeScreenshot(name) {
+    try {
+      const screenshotPath = path.join(this.screenshotFolder, `${name}.png`);
+      const result = await this.visionService.takeScreenshot(screenshotPath);
+      console.log(`Screenshot saved to: ${screenshotPath}`);
+      return screenshotPath;
+    } catch (error) {
+      console.error("Error taking screenshot:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Get the current state of the task execution
+   * @returns {Object} - Current task state information
    */
   getTaskState() {
     return {
-      task: this.currentTask,
-      currentStepIndex: this.currentStepIndex,
-      totalSteps: this.steps.length,
-      steps: this.steps
+      state: this.taskState,
+      currentTask: this.currentTask,
+      totalSteps: this.taskSteps.length,
+      currentStep: this.currentStepIndex + 1,
+      steps: this.taskSteps
     };
   }
 }
 
-module.exports = new VisionTaskManager();
+// Create a singleton instance
+const visionTaskManager = new VisionTaskManager();
+
+// Export the singleton
+module.exports = visionTaskManager;

@@ -30,3 +30,60 @@ body, html {
 ::-webkit-scrollbar-thumb:hover {
   background: #555;
 }
+
+/* Add these styles to your global.css file */
+
+.task-input-container {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+.task-input-container input {
+  padding: 10px;
+  font-size: 16px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
+.button-group {
+  display: flex;
+  gap: 10px;
+}
+
+.ask-button {
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  flex: 1;
+}
+
+.ask-button:hover:not(:disabled) {
+  background-color: #5a6268;
+}
+
+.execute-button {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  flex: 1;
+}
+
+.execute-button:hover:not(:disabled) {
+  background-color: #0069d9;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
